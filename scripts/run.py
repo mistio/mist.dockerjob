@@ -23,7 +23,7 @@ def chmod_keys():
 def extract(content, path="."):
     f = StringIO.StringIO(content)
     tf = tarfile.open(fileobj=f)
-    tf.extract_all(path=path)
+    tf.extractall(path=path)
 
 
 def download_file(url, max_size=MAX_SIZE):
