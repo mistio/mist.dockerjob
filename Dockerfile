@@ -4,6 +4,6 @@ RUN pip install mist.client requests
 RUN pip install mist.ansible
 
 RUN mkdir -p /tmp/mist
-ADD scripts/run.py /tmp/mist
+ADD scripts/run.py /tmp/mist/run.py
 
-WORKDIR /tmp/mist
+WORKDIR /tmp/mist/
