@@ -17,7 +17,7 @@ def chmod_keys():
     # chmod keys in id_rsa dir
     keys = os.listdir('id_rsa')
     for key in keys:
-        os.chmod(os.path.join("id_rsa", key), 600)
+        os.chmod(os.path.join("id_rsa", key), 0600)
 
 
 def extract(content, path="."):
@@ -28,26 +28,21 @@ def extract(content, path="."):
 
 def download_file(url, max_size=MAX_SIZE):
     # NOTE the stream=True parameter
-    resp = requests.get(url, stream=True)
-    size = int(resp.headers['content-length'])
-    print "Request size: %d" % size
-    if max_size and size > max_size:
-        raise Exception('Size is %d > %d' % (size, max_size))
+    resp = requests.get(url)
     return resp.content
 
 
 def command(args, timeout):
-    proc = Popen(args, stdout=PIPE, stderr=PIPE)
+    proc = Popen(args)
 
     kill_proc = lambda p: p.kill()
 
     timer = Timer(timeout, kill_proc, [proc])
     timer.start()
-    stdout, stderr = proc.communicate()
-    returncode = proc.returncode
+    returncode = proc.wait()
     timer.cancel()
 
-    return stdout, stderr, returncode
+    return returncode
 
 
 def main():
@@ -70,20 +65,18 @@ def main():
         extract(downloaded_content, "playbooks")
     except tarfile.TarError:
         entrypoint = 'main.yml'
-        with open("playbooks/main.yml" + "w") as f:
+        with open("playbooks/main.yml", "w") as f:
             f.write(downloaded_content)
 
     args = ['ansible-playbook', 'playbooks/' + entrypoint, '-e', '"%s"' % extra_vars]
 
-    stdout, stderr, returncode = command(args, 60*30)
+    returncode = command(args, 60*30)
 
     if returncode == 0:
-        print "Everything went ok"
-        print stdout
+        print "OK"
         sys.exit(0)
     else:
-        print "Skata, skata stin 5-6-7"
-        print stderr
+        print "Failure"
         sys.exit(1)
 
 if __name__ == "__main__":
