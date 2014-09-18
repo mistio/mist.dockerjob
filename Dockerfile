@@ -7,3 +7,4 @@ RUN mkdir -p /tmp/mist
 ADD scripts/run.py /tmp/mist/run.py
 
 WORKDIR /tmp/mist/
+ENTRYPOINT python run.py
