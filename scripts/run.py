@@ -2,10 +2,11 @@
 
 import os
 import sys
+import json
 import base64
 import tarfile
 import StringIO
-from subprocess import Popen, PIPE
+from subprocess import Popen
 from threading import Timer
 
 import requests
@@ -50,34 +51,51 @@ def main():
     entrypoint = os.getenv('ENTRYPOINT')
     extra_vars = os.getenv('EXTRA_VARS')
     tgz_b64 = os.getenv('TGZ_B64')
+    callback = os.getenv('CALLBACK_URL')
 
-    # Decode base64
-    decoded = base64.urlsafe_b64decode(tgz_b64)
-
-    # Extract the decoded tar with ansible.cfg, inventory, keys etc
-    extract(decoded)
-    chmod_keys()
-
-    # Download content from url and mkdir playbooks
-    downloaded_content = download_file(url)
-    os.mkdir("playbooks")
     try:
-        extract(downloaded_content, "playbooks")
-    except tarfile.TarError:
-        entrypoint = 'main.yml'
-        with open("playbooks/main.yml", "w") as f:
-            f.write(downloaded_content)
+        # Decode base64
+        decoded = base64.urlsafe_b64decode(tgz_b64)
+
+        # Extract the decoded tar with ansible.cfg, inventory, keys etc
+        extract(decoded)
+        chmod_keys()
+
+        # Download content from url and mkdir playbooks
+        downloaded_content = download_file(url)
+        os.mkdir("playbooks")
+        try:
+            extract(downloaded_content, "playbooks")
+        except tarfile.TarError:
+            entrypoint = 'main.yml'
+            with open("playbooks/main.yml", "w") as f:
+                f.write(downloaded_content)
+    except Exception as exc:
+        payload = {
+            'success': False,
+            'error_msg': repr(exc)
+        }
+
+        requests.post(callback, data=json.dumps(payload), verify=False)
 
     args = ['ansible-playbook', 'playbooks/' + entrypoint, '-e', '"%s"' % extra_vars]
-
     returncode = command(args, 60*30)
 
     if returncode == 0:
-        print "OK"
-        sys.exit(0)
+        success = True
+        error_msg = None
     else:
-        print "Failure"
-        sys.exit(1)
+        success = False
+        error_msg = "Running command exited with return code %d" % returncode
+
+    payload = {
+        'success': success,
+        'error_msg': error_msg
+    }
+
+    requests.post(callback, data=json.dumps(payload), verify=False)
+    # Exit with returncode of command. 0 if success.
+    sys.exit(returncode)
 
 if __name__ == "__main__":
     main()
