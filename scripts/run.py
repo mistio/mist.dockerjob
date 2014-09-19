@@ -52,6 +52,7 @@ def main():
     extra_vars = os.getenv('EXTRA_VARS')
     tgz_b64 = os.getenv('TGZ_B64')
     callback = os.getenv('CALLBACK_URL')
+    token = os.getenv('TOKEN')
 
     try:
         # Decode base64
@@ -73,7 +74,8 @@ def main():
     except Exception as exc:
         payload = {
             'success': False,
-            'error_msg': repr(exc)
+            'error_msg': repr(exc),
+            'token': token
         }
 
         requests.post(callback, data=json.dumps(payload), verify=False)
@@ -90,7 +92,8 @@ def main():
 
     payload = {
         'success': success,
-        'error_msg': error_msg
+        'error_msg': error_msg,
+        'token': token
     }
 
     requests.post(callback, data=json.dumps(payload), verify=False)
