@@ -47,13 +47,13 @@ def command(args, timeout):
     return returncode
 
 
-def parse_output(output_path="/tmp/json"):
+def parse_output(output_path="/tmp/output.json"):
     """
     If /tmp/output.json exists, try to load it and return the ret_dict, else
     return {}
     """
     ret_dict = {}
-    if os.path.isfile('/tmp/output.json'):
+    if os.path.isfile(output_path):
         with open(output_path, "r") as f:
             output_content = f.read()
     else:
