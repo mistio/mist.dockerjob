@@ -6,6 +6,7 @@ import json
 import base64
 import tarfile
 import StringIO
+from time import sleep
 from subprocess import Popen
 from threading import Timer
 
@@ -96,8 +97,14 @@ def main():
         'token': token
     }
 
-    requests.post(callback, data=json.dumps(payload), verify=False)
-    # Exit with returncode of command. 0 if success.
+    for i in range(0, 5):
+        try:
+            requests.post(callback, data=json.dumps(payload), verify=False)
+            # Exit with returncode of command. 0 if success.
+            sys.exit(returncode)
+        except:
+            sleep(4)
+
     sys.exit(returncode)
 
 if __name__ == "__main__":
