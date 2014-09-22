@@ -47,6 +47,26 @@ def command(args, timeout):
     return returncode
 
 
+def parse_output(output_path="/tmp/json"):
+    """
+    If /tmp/output.json exists, try to load it and return the ret_dict, else
+    return {}
+    """
+    ret_dict = {}
+    if os.path.isfile('/tmp/output.json'):
+        with open(output_path, "r") as f:
+            output_content = f.read()
+    else:
+        return ret_dict
+
+    # In case the file is empty, the json.loads will break with ValueError
+    try:
+        ret_dict = json.loads(output_content)
+        return ret_dict
+    except ValueError:
+        return ret_dict
+
+
 def main():
     url = os.getenv('URL')
     entrypoint = os.getenv('ENTRYPOINT')
@@ -91,10 +111,13 @@ def main():
         success = False
         error_msg = "Running command exited with return code %d" % returncode
 
+    ret_dict = parse_output()
+
     payload = {
         'success': success,
         'error_msg': error_msg,
-        'token': token
+        'token': token,
+        'ret_dict': ret_dict
     }
 
     for i in range(0, 5):
