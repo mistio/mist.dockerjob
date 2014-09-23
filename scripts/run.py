@@ -20,13 +20,13 @@ def download(url, headers=None):
     return resp.content
 
 
-def prepare(tgz_b64, location, location_type, entrypoint, github_token=''):
+def prepare(tgz_b64, location, location_type, cwd, entrypoint, github_token):
     # Extract the decoded tar with ansible.cfg, inventory, keys etc
     tgz = base64.urlsafe_b64decode(tgz_b64)
     tarfile.open(fileobj=StringIO.StringIO(tgz)).extractall()
     for key in os.listdir('id_rsa'):
-        os.chmod(os.path.join("id_rsa", key), 0600)
-    os.mkdir("playbooks")
+        os.chmod(os.path.join('id_rsa', key), 0600)
+    os.mkdir('playbooks')
 
     if location_type == 'github':
         # location is a repo in the form owner/repo
@@ -39,9 +39,10 @@ def prepare(tgz_b64, location, location_type, entrypoint, github_token=''):
         tarfile.open(fileobj=StringIO.StringIO(data)).extractall('playbooks')
         tldirs = os.listdir('playbooks')
         if len(tldirs) == 1:
-            if not os.path.exists('playbooks/%s' % entrypoint) \
-               and os.path.exists('playbooks/%s/%s' % (tldirs[0], entrypoint)):
-                entrypoint = '%s/%s' % (tldirs[0], entrypoint)
+            relpath = os.path.join(cwd, entrypoint) if cwd else entrypoint
+            if not os.path.exists('playbooks/%s' % relpath) \
+               and os.path.exists('playbooks/%s/%s' % (tldirs[0], relpath)):
+                cwd = os.path.join(tldirs[0], cwd) if cwd else tldirs[0]
     else:  # http file or tarball
         data = download(location)
         try:
@@ -49,18 +50,20 @@ def prepare(tgz_b64, location, location_type, entrypoint, github_token=''):
             tf.extractall('playbooks')
         except tarfile.TarError:
             entrypoint = 'main.yml'
-            with open("playbooks/main.yml", "w") as f:
+            cwd = ''
+            with open('playbooks/main.yml', 'w') as f:
                 f.write(data)
-    return entrypoint
+    cwd = os.path.join('playbooks', cwd) if cwd else 'playbooks'
+    return cwd, entrypoint
 
 
-def run(entrypoint, extra_vars):
-    args = ['ansible-playbook',
-            'playbooks/' + entrypoint,
-            '-e',
-            str(extra_vars or '')]
+def run(cwd, entrypoint, extra_vars):
+    args = ['ansible-playbook', entrypoint,
+            '-e', str(extra_vars or ''),
+            '-e', 'host_key_checking=False',
+            '-i', os.path.abspath('inventory')]
     print args
-    proc = subprocess.Popen(args)
+    proc = subprocess.Popen(args, cwd=cwd)
     timer = threading.Timer(60 * 30, proc.kill)
     timer.start()
     returncode = proc.wait()
@@ -103,18 +106,19 @@ def main():
     location = os.getenv('LOCATION')
     location_type = os.getenv('LOCATION_TYPE')
     entrypoint = os.getenv('ENTRYPOINT')
+    cwd = os.getenv('CWD')
     extra_vars = os.getenv('EXTRA_VARS')
     tgz_b64 = os.getenv('TGZ_B64')
     github_token = os.getenv('GITHUB_TOKEN')
 
     try:
-        entrypoint = prepare(tgz_b64, location, location_type,
-                             entrypoint, github_token)
+        cwd, entrypoint = prepare(tgz_b64, location, location_type,
+                                  cwd, entrypoint, github_token)
     except Exception as exc:
         callback(callback_url, callback_token, False, repr(exc))
         sys.exit(1)
 
-    success, error_msg, ret_dict = run(entrypoint, extra_vars)
+    success, error_msg, ret_dict = run(cwd, entrypoint, extra_vars)
 
     callback(callback_url, callback_token, success, error_msg, ret_dict)
 
