@@ -58,8 +58,8 @@ def run(entrypoint, extra_vars):
     args = ['ansible-playbook',
             'playbooks/' + entrypoint,
             '-e',
-            '"%s"' % extra_vars]
-
+            "'%s'" % extra_vars]
+    print args
     proc = subprocess.Popen(args)
     timer = threading.Timer(60 * 30, proc.kill)
     timer.start()
