@@ -38,13 +38,17 @@ def prepare(tgz_b64, location, location_type, cwd, entrypoint, github_token):
         else:
             headers = {}
         data = download(url, headers)
+        print 'Downloaded tarball'
         tarfile.open(fileobj=StringIO.StringIO(data)).extractall('playbooks')
+        print 'Extracted tarball'
         tldirs = os.listdir('playbooks')
         if len(tldirs) == 1:
             relpath = os.path.join(cwd, entrypoint) if cwd else entrypoint
+            print 'relpath:', relpath
             if not os.path.exists('playbooks/%s' % relpath) \
                and os.path.exists('playbooks/%s/%s' % (tldirs[0], relpath)):
                 cwd = os.path.join(tldirs[0], cwd) if cwd else tldirs[0]
+                print 'modified cwd:', cwd
     else:  # http file or tarball
         print 'Fetch playbook from http url'
         data = download(location)
