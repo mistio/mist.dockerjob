@@ -2,107 +2,57 @@
 
 import os
 import sys
+import time
 import json
 import base64
 import tarfile
 import StringIO
-from time import sleep
-from subprocess import Popen
-from threading import Timer
+import threading
+import subprocess
 
 import requests
 
-MAX_SIZE = 1024 * 1024 * 100
 
-
-def chmod_keys():
-    # chmod keys in id_rsa dir
-    keys = os.listdir('id_rsa')
-    for key in keys:
+def prepare(tgz_b64, location, location_type, entrypoint, github_token=''):
+    # Extract the decoded tar with ansible.cfg, inventory, keys etc
+    tgz = base64.urlsafe_b64decode(tgz_b64)
+    tarfile.open(fileobj=StringIO.StringIO(tgz)).extractall()
+    untar(base64.urlsafe_b64decode(tgz_b64))
+    for key in os.listdir('id_rsa'):
         os.chmod(os.path.join("id_rsa", key), 0600)
 
+    headers = {}
+    url = location
+    if location_type == 'github':
+        # location is a repo in the form owner/repo
+        url = 'https://api.github.com/repos/%s/tarball/master' % location
+        if github_token:
+            headers = {'Authorization': 'token %s' % github_token}
 
-def extract(content, path="."):
-    f = StringIO.StringIO(content)
-    tf = tarfile.open(fileobj=f)
-    tf.extractall(path=path)
+    # Download content from url and mkdir playbooks
+    data = requests.get(url, headers=headers).content
+
+    os.mkdir("playbooks")
+    try:
+        tarfile.open(fileobj=StringIO.StringIO(data)).extractall('playbooks')
+    except tarfile.TarError:
+        entrypoint = 'main.yml'
+        with open("playbooks/main.yml", "w") as f:
+            f.write(data)
+    return entrypoint
 
 
-def download_file(url, max_size=MAX_SIZE):
-    # NOTE the stream=True parameter
-    resp = requests.get(url)
-    return resp.content
+def run(entrypoint, extra_vars):
+    args = ['ansible-playbook',
+            'playbooks/' + entrypoint,
+            '-e',
+            '"%s"' % extra_vars]
 
-
-def command(args, timeout):
-    proc = Popen(args)
-
-    kill_proc = lambda p: p.kill()
-
-    timer = Timer(timeout, kill_proc, [proc])
+    proc = subprocess.Popen(args)
+    timer = threading.Timer(60 * 30, proc.kill)
     timer.start()
     returncode = proc.wait()
     timer.cancel()
-
-    return returncode
-
-
-def parse_output(output_path="/tmp/output.json"):
-    """
-    If /tmp/output.json exists, try to load it and return the ret_dict, else
-    return {}
-    """
-    ret_dict = {}
-    if os.path.isfile(output_path):
-        with open(output_path, "r") as f:
-            output_content = f.read()
-    else:
-        return ret_dict
-
-    # In case the file is empty, the json.loads will break with ValueError
-    try:
-        ret_dict = json.loads(output_content)
-        return ret_dict
-    except ValueError:
-        return ret_dict
-
-
-def main():
-    url = os.getenv('URL')
-    entrypoint = os.getenv('ENTRYPOINT')
-    extra_vars = os.getenv('EXTRA_VARS')
-    tgz_b64 = os.getenv('TGZ_B64')
-    callback = os.getenv('CALLBACK_URL')
-    token = os.getenv('TOKEN')
-
-    try:
-        # Decode base64
-        decoded = base64.urlsafe_b64decode(tgz_b64)
-
-        # Extract the decoded tar with ansible.cfg, inventory, keys etc
-        extract(decoded)
-        chmod_keys()
-
-        # Download content from url and mkdir playbooks
-        downloaded_content = download_file(url)
-        os.mkdir("playbooks")
-        try:
-            extract(downloaded_content, "playbooks")
-        except tarfile.TarError:
-            entrypoint = 'main.yml'
-            with open("playbooks/main.yml", "w") as f:
-                f.write(downloaded_content)
-    except Exception as exc:
-        payload = {
-            'success': False,
-            'error_msg': repr(exc),
-            'token': token
-        }
-
-        requests.post(callback, data=json.dumps(payload), verify=False)
-
-    args = ['ansible-playbook', 'playbooks/' + entrypoint, '-e', '"%s"' % extra_vars]
-    returncode = command(args, 60*30)
 
     if returncode == 0:
         success = True
@@ -110,25 +60,55 @@ def main():
     else:
         success = False
         error_msg = "Running command exited with return code %d" % returncode
+    try:
+        with open('/tmp/output.json') as f:
+            ret_dict = json.load(f)
+    except:
+        ret_dict = {}
+    return success, error_msg, ret_dict
 
-    ret_dict = parse_output()
 
-    payload = {
+def callback(url, token, success, error_msg='', ret_dict=None):
+    data = json.dumps({
         'success': success,
         'error_msg': error_msg,
+        'ret_dict': ret_dict or {},
         'token': token,
-        'ret_dict': ret_dict
-    }
-
-    for i in range(0, 5):
+    })
+    for i in range(5):
         try:
-            requests.post(callback, data=json.dumps(payload), verify=False)
-            # Exit with returncode of command. 0 if success.
-            sys.exit(returncode)
+            if requests.post(url, data=data, verify=False).ok:
+                return True
         except:
-            sleep(4)
+            pass
+        time.sleep(5)
+    return False
 
-    sys.exit(returncode)
+
+def main():
+    callback_url = os.getenv('CALLBACK_URL')
+    callback_token = os.getenv('CALLBACK_TOKEN')
+    location = os.getenv('LOCATION')
+    location_type = os.getenv('LOCATION_TYPE')
+    entrypoint = os.getenv('ENTRYPOINT')
+    extra_vars = os.getenv('EXTRA_VARS')
+    tgz_b64 = os.getenv('TGZ_B64')
+    github_token = os.getenv('GITHUB_TOKEN')
+
+    try:
+        entrypoint = prepare(tgz_b64, location, location_type,
+                             entrypoint, github_token)
+    except Exception as exc:
+        callback(callback_url, callback_token, False, repr(exc))
+        sys.exit(1)
+
+    success, error_msg, ret_dict = run(entrypoint, extra_vars)
+
+    callback(callback_url, callback_token, success, error_msg, ret_dict)
+
+    if not success:
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
