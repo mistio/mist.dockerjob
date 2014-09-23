@@ -57,7 +57,7 @@ def prepare(tgz_b64, location, location_type, cwd, entrypoint, github_token):
             with open('playbooks/main.yml', 'w') as f:
                 f.write(data)
     cwd = os.path.join('playbooks', cwd) if cwd else 'playbooks'
-    print 'Cwd:' cwd
+    print 'Cwd:', cwd
     print 'Entrypoint:', entrypoint
     return cwd, entrypoint
 
