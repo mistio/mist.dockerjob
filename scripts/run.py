@@ -27,8 +27,10 @@ def prepare(tgz_b64, location, location_type, cwd, entrypoint, github_token):
     for key in os.listdir('id_rsa'):
         os.chmod(os.path.join('id_rsa', key), 0600)
     os.mkdir('playbooks')
+    print 'Extracted inventory files and keys, chmods and mkdirs'
 
     if location_type == 'github':
+        print 'Fetch playbook from github repo'
         # location is a repo in the form owner/repo
         url = 'https://api.github.com/repos/%s/tarball' % location
         if github_token:
@@ -44,6 +46,7 @@ def prepare(tgz_b64, location, location_type, cwd, entrypoint, github_token):
                and os.path.exists('playbooks/%s/%s' % (tldirs[0], relpath)):
                 cwd = os.path.join(tldirs[0], cwd) if cwd else tldirs[0]
     else:  # http file or tarball
+        print 'Fetch playbook from http url'
         data = download(location)
         try:
             tf = tarfile.open(fileobj=StringIO.StringIO(data))
@@ -54,6 +57,8 @@ def prepare(tgz_b64, location, location_type, cwd, entrypoint, github_token):
             with open('playbooks/main.yml', 'w') as f:
                 f.write(data)
     cwd = os.path.join('playbooks', cwd) if cwd else 'playbooks'
+    print 'Cwd:' cwd
+    print 'Entrypoint:', entrypoint
     return cwd, entrypoint
 
 
