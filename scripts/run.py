@@ -13,32 +13,44 @@ import subprocess
 import requests
 
 
+def download(url, headers=None):
+    resp = requests.get(url, headers=headers or {})
+    if not resp.ok:
+        raise Exception("Error downloading '%s': %s" % (url, resp.text))
+    return resp.content
+
+
 def prepare(tgz_b64, location, location_type, entrypoint, github_token=''):
     # Extract the decoded tar with ansible.cfg, inventory, keys etc
     tgz = base64.urlsafe_b64decode(tgz_b64)
     tarfile.open(fileobj=StringIO.StringIO(tgz)).extractall()
-    untar(base64.urlsafe_b64decode(tgz_b64))
     for key in os.listdir('id_rsa'):
         os.chmod(os.path.join("id_rsa", key), 0600)
+    os.mkdir("playbooks")
 
-    headers = {}
-    url = location
     if location_type == 'github':
         # location is a repo in the form owner/repo
-        url = 'https://api.github.com/repos/%s/tarball/master' % location
+        url = 'https://api.github.com/repos/%s/tarball' % location
         if github_token:
             headers = {'Authorization': 'token %s' % github_token}
-
-    # Download content from url and mkdir playbooks
-    data = requests.get(url, headers=headers).content
-
-    os.mkdir("playbooks")
-    try:
+        else:
+            headers = {}
+        data = download(url, headers)
         tarfile.open(fileobj=StringIO.StringIO(data)).extractall('playbooks')
-    except tarfile.TarError:
-        entrypoint = 'main.yml'
-        with open("playbooks/main.yml", "w") as f:
-            f.write(data)
+        tldirs = os.listdir('playbooks')
+        if len(tldirs) == 1:
+            if not os.path.exists('playbooks/%s' % entrypoint) \
+               and os.path.exists('playbooks/%s/%s' % (tldirs[0], entrypoint)):
+                entrypoint = '%s/%s' % (tldirs[0], entrypoint)
+    else:  # http file or tarball
+        data = download(location)
+        try:
+            tf = tarfile.open(fileobj=StringIO.StringIO(data))
+            tf.extractall('playbooks')
+        except tarfile.TarError:
+            entrypoint = 'main.yml'
+            with open("playbooks/main.yml", "w") as f:
+                f.write(data)
     return entrypoint
 
 
