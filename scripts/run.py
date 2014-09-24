@@ -87,7 +87,8 @@ def run(cwd, entrypoint, extra_vars):
     try:
         with open('/tmp/output.json') as f:
             ret_dict = json.load(f)
-    except:
+    except Exception as exc:
+        print 'Error parsing output.json: %r' % exc
         ret_dict = {}
     return success, error_msg, ret_dict
 
