@@ -24,8 +24,14 @@ def prepare(tgz_b64, location, location_type, cwd, entrypoint, github_token):
     # Extract the decoded tar with ansible.cfg, inventory, keys etc
     tgz = base64.urlsafe_b64decode(tgz_b64)
     tarfile.open(fileobj=StringIO.StringIO(tgz)).extractall()
-    for key in os.listdir('id_rsa'):
-        os.chmod(os.path.join('id_rsa', key), 0600)
+    try:
+        keyfiles = os.listdir('id_rsa')
+    except:
+        # no ssh keys
+        pass
+    else:
+        for key in keyfiles:
+            os.chmod(os.path.join('id_rsa', key), 0600)
     os.mkdir('playbooks')
     print 'Extracted inventory files and keys, chmods and mkdirs'
 
